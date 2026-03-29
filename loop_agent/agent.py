@@ -130,6 +130,11 @@ class LoopAgent:
         await self._emit({"type": "agent_status", **self.status.to_dict()})
 
         try:
+            direct_action = self._parse_direct_action(task_description)
+            if direct_action:
+                await self._run_direct_action(task_description, direct_action)
+                return
+
             # 阶段 1: 任务规划
             subtasks = await self._plan_subtasks(task_description)
             if not subtasks:
@@ -222,6 +227,123 @@ class LoopAgent:
         await self._emit({"type": "chat", "role": "assistant", "content": plan_text})
 
         return subtasks
+
+    @staticmethod
+    def _parse_direct_action(task: str) -> Optional[dict]:
+        """为高频简单中文动作提供确定性执行，绕过 LLM 不稳定的工具选择。"""
+        text = task.strip()
+        arm = None
+        if "右臂" in text:
+            arm = "right"
+        elif "左臂" in text:
+            arm = "left"
+
+        if arm is None:
+            return None
+
+        duration = 1.5
+        if any(k in text for k in ("抬起", "抬高", "上抬", "举起")):
+            return {
+                "summary": f"直接执行{('右臂' if arm == 'right' else '左臂')}上抬",
+                "primary_tool": {
+                    "name": "move_arm_cartesian_delta",
+                    "arguments": {"arm": arm, "dz": 0.02, "duration": duration},
+                },
+                "fallback_tool": {
+                    "name": "move_arm",
+                    "arguments": {"arm": arm, "deltas": {"shoulder_lift": 4.0}},
+                },
+            }
+
+        if any(k in text for k in ("放下", "降低", "下压", "下移")):
+            return {
+                "summary": f"直接执行{('右臂' if arm == 'right' else '左臂')}下压",
+                "primary_tool": {
+                    "name": "move_arm_cartesian_delta",
+                    "arguments": {"arm": arm, "dz": -0.02, "duration": duration},
+                },
+                "fallback_tool": {
+                    "name": "move_arm",
+                    "arguments": {"arm": arm, "deltas": {"shoulder_lift": -4.0}},
+                },
+            }
+
+        return None
+
+    async def _run_direct_action(self, task_description: str, action: dict) -> None:
+        """执行直接动作命令，并在必要时回退到更底层的关节控制。"""
+        subtask = SubTask(index=0, description=action["summary"])
+        self.status.subtasks = [subtask]
+        self.status.state = AgentState.EXECUTING
+        self.status.current_subtask_idx = 0
+        await self._emit({"type": "agent_status", **self.status.to_dict()})
+        await self._emit({
+            "type": "subtask_start",
+            "index": 0,
+            "description": subtask.description,
+        })
+        await self._emit({
+            "type": "chat",
+            "role": "assistant",
+            "content": f"检测到简单直接动作指令，跳过规划，直接执行：{task_description}",
+        })
+
+        for tool_spec in (action["primary_tool"], action.get("fallback_tool")):
+            if not tool_spec:
+                continue
+
+            call_id = str(uuid.uuid4())
+            fc = FunctionCall(
+                call_id=call_id,
+                name=tool_spec["name"],
+                arguments=json.dumps(tool_spec["arguments"], ensure_ascii=False),
+            )
+
+            await self._emit({
+                "type": "tool_start",
+                "name": fc.name,
+                "call_id": call_id,
+            })
+            await self._emit({
+                "type": "tool_ready",
+                "name": fc.name,
+                "call_id": call_id,
+                "arguments": fc.arguments,
+            })
+
+            result = await self._execute_tool(fc)
+            self.status.total_steps += 1
+            self.status.last_action = f"{fc.name}({fc.arguments})"
+            await self._emit({
+                "type": "tool_result",
+                "name": fc.name,
+                "call_id": call_id,
+                "arguments": fc.parsed_arguments(),
+                "result": result,
+            })
+
+            if result.get("success"):
+                subtask.completed = True
+                self.status.state = AgentState.COMPLETED
+                await self._emit({"type": "agent_status", **self.status.to_dict()})
+                await self._emit({
+                    "type": "chat",
+                    "role": "assistant",
+                    "content": f"已执行完成：{action['summary']}",
+                })
+                return
+
+            logger.warning(
+                "直接动作执行失败，准备尝试回退工具: %s -> %s",
+                fc.name, result,
+            )
+
+        self.status.state = AgentState.ERROR
+        await self._emit({"type": "agent_status", **self.status.to_dict()})
+        await self._emit({
+            "type": "error",
+            "message": f"直接动作执行失败: {task_description}",
+        })
 
     @staticmethod
     def _build_direct_motion_hint(task: str, subtask: str) -> str:
