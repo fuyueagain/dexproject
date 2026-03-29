@@ -37,10 +37,11 @@ BASE_MOTOR_IDS = {
 }
 
 # ── 端口 (可通过环境变量覆盖, 重启/重插后端口号可能变化) ──
-# 通过探测确认: ACM0=左从臂+底盘(9个), ACM2=右从臂+云台(8个)
+# 通过探测确认: ACM0=左从臂+底盘, ACM1=右从臂+云台,
+# ACM2=左主臂, ACM3=右主臂
 PORT_LEFT_FOLLOWER = os.environ.get("LEFT_PORT", "/dev/ttyACM0")
-PORT_RIGHT_FOLLOWER = os.environ.get("RIGHT_PORT", "/dev/ttyACM2")
-PORT_LEFT_LEADER = os.environ.get("LEFT_LEADER_PORT", "/dev/ttyACM1")
+PORT_RIGHT_FOLLOWER = os.environ.get("RIGHT_PORT", "/dev/ttyACM1")
+PORT_LEFT_LEADER = os.environ.get("LEFT_LEADER_PORT", "/dev/ttyACM2")
 PORT_RIGHT_LEADER = os.environ.get("RIGHT_LEADER_PORT", "/dev/ttyACM3")
 
 # ── 摄像头 ──

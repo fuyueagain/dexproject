@@ -223,6 +223,38 @@ class LoopAgent:
 
         return subtasks
 
+    @staticmethod
+    def _build_direct_motion_hint(task: str, subtask: str) -> str:
+        """为简单自然语言动作生成稳定的工具调用提示。"""
+        text = f"{task} {subtask}"
+        arm = None
+        if "右臂" in text:
+            arm = "right"
+        elif "左臂" in text:
+            arm = "left"
+
+        if arm is None:
+            return ""
+
+        directions = []
+        if any(k in text for k in ("抬起", "抬高", "上抬", "举起")):
+            directions.append(f"- 这是明确的抬臂命令，优先调用 `move_arm_cartesian_delta(arm=\"{arm}\", dz=0.01~0.03)`。")
+        if any(k in text for k in ("放下", "降低", "下压", "下移")):
+            directions.append(f"- 这是明确的下压命令，优先调用 `move_arm_cartesian_delta(arm=\"{arm}\", dz=-0.01~-0.03)`。")
+        if any(k in text for k in ("前伸", "伸出", "向前")):
+            directions.append(f"- 这是明确的前伸命令，优先调用 `move_arm_cartesian_delta(arm=\"{arm}\", dx=0.01~0.03)`。")
+        if any(k in text for k in ("后缩", "缩回", "向后")):
+            directions.append(f"- 这是明确的后缩命令，优先调用 `move_arm_cartesian_delta(arm=\"{arm}\", dx=-0.01~-0.03)`。")
+        if any(k in text for k in ("左移", "往左", "向左")):
+            directions.append(f"- 这是明确的左移命令，优先调用 `move_arm_cartesian_delta(arm=\"{arm}\", dy=0.01~0.03)`。")
+        if any(k in text for k in ("右移", "往右", "向右")):
+            directions.append(f"- 这是明确的右移命令，优先调用 `move_arm_cartesian_delta(arm=\"{arm}\", dy=-0.01~-0.03)`。")
+
+        if not directions:
+            return ""
+
+        return "## 直接动作映射提示\n" + "\n".join(directions)
+
     async def _execute_subtask(self, subtask: SubTask):
         """执行单个子任务的感知-决策-行动循环"""
         while (not subtask.completed
@@ -276,12 +308,18 @@ class LoopAgent:
             context_parts.append(state_text)
 
             if images_b64:
-                img_desc = ["图1: 左腕相机 cam_a (左臂手腕上的近景相机)"]
+                img_desc = ["图1: 头部相机 cam_a (云台上的全局视角相机)"]
                 if len(images_b64) > 1:
-                    img_desc.append("图2: 头部相机 cam_b (云台上的全局视角相机)")
+                    img_desc.append("图2: 右腕相机 cam_b (右臂手腕上的近景相机)")
                 context_parts.append("## 附带相机画面\n" + "\n".join(img_desc))
             else:
                 context_parts.append("## 相机\n无可用画面")
+
+            direct_hint = self._build_direct_motion_hint(
+                self.status.current_task, subtask.description
+            )
+            if direct_hint:
+                context_parts.append(direct_hint)
 
             context_parts.append(
                 "## 指令\n"

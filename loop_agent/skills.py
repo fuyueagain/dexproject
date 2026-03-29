@@ -521,7 +521,7 @@ class RobotSkillsWrapper:
         _, buf = cv2.imencode(".jpg", canvas, [cv2.IMWRITE_JPEG_QUALITY, 75])
         return base64.b64encode(buf.tobytes()).decode("ascii")
 
-    _CAM_LABELS = {"cam_a": "左腕相机", "cam_b": "头部相机"}
+    _CAM_LABELS = {"cam_a": "头部相机", "cam_b": "右腕相机"}
 
     def get_observation_for_llm(self) -> tuple[str, list[dict], list[dict]]:
         """获取当前状态文本 + 相机图片 + 前后对比图。

@@ -70,7 +70,7 @@ SYSTEM_PROMPT = f"""你是 YuanClaw Loop Agent，一个控制 XLeRobot 双臂机
 - 双臂: 左臂 + 右臂, 各6个关节(shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll) + 夹爪(gripper)
 - 头部云台: pan(水平) + tilt(垂直)
 - 底盘: 三轮全向移动
-- 相机: cam_a(左腕相机, 左臂手腕上), cam_b(头部相机, 云台控制)
+- 相机: cam_a(头部相机, 云台控制), cam_b(右腕相机, 近景视角)
 
 ## 关节控制说明
 {JOINT_DESCRIPTION}
@@ -91,6 +91,13 @@ SYSTEM_PROMPT = f"""你是 YuanClaw Loop Agent，一个控制 XLeRobot 双臂机
   - 建议每次增量 0.005~0.03m (5mm~3cm)
   - 先用 get_cartesian_pose 了解当前位置，再决定增量方向和大小
   - 如果位置不可达，IK 会返回最接近的结果
+- **直接方向口令优先映射**:
+  - “抬起右臂” → 优先调用 `move_arm_cartesian_delta(arm="right", dz>0)`
+  - “放下右臂” → 优先调用 `move_arm_cartesian_delta(arm="right", dz<0)`
+  - “抬起左臂” → 优先调用 `move_arm_cartesian_delta(arm="left", dz>0)`
+  - “放下左臂” → 优先调用 `move_arm_cartesian_delta(arm="left", dz<0)`
+  - “前伸/后缩/左移/右移” 这类末端方向明确的口令，也优先使用 `move_arm_cartesian_delta`
+  - 只有在任务明确要求姿态调整，或笛卡尔移动不足以完成目标时，才优先考虑 `move_arm`
 
 ## 执行流程
 当收到任务指令时:
@@ -113,7 +120,7 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "name": "move_arm",
-        "description": "对指定手臂的关节进行增量控制。delta 值范围建议 [-5, 5]。",
+        "description": "对指定手臂的关节进行增量控制。适合姿态调整；像“抬起右臂/前伸”这种末端方向明确的命令，优先改用 move_arm_cartesian_delta。delta 值范围建议 [-5, 5]。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -190,7 +197,7 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "name": "move_arm_cartesian_delta",
-        "description": "笛卡尔空间增量移动手臂末端。单位: 米。工作坐标系: x=前后, y=左右, z=上下。每轴单步限制 ±0.05m。",
+        "description": "笛卡尔空间增量移动手臂末端。单位: 米。工作坐标系: x=前后, y=左右, z=上下。像“抬起右臂/放下右臂/前伸/后缩/左移/右移”这类直接动作命令应优先使用它。每轴单步限制 ±0.05m。",
         "parameters": {
             "type": "object",
             "properties": {
