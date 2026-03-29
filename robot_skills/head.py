@@ -40,6 +40,8 @@ class HeadController:
     def connect(self) -> None:
         if self.is_connected or self._shared:
             return
+        if not self.port:
+            raise RuntimeError("[head] 未检测到云台所在右臂从臂串口")
         motors = {n: Motor(mid, "sts3215", MotorNormMode.RANGE_M100_100)
                   for n, mid in HEAD_MOTOR_IDS.items()}
         self._bus = make_bus(self.port, motors)

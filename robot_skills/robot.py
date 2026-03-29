@@ -31,13 +31,26 @@ class RobotSkills:
 
     def __init__(self, enable_arms=True, enable_head=True,
                  enable_base=True, enable_cameras=True):
-        self.left_arm = ArmController(PORT_LEFT_FOLLOWER, "left_arm") if enable_arms else None
-        self.right_arm = ArmController(PORT_RIGHT_FOLLOWER, "right_arm") if enable_arms else None
-        self.head = HeadController(PORT_RIGHT_FOLLOWER) if enable_head else None
-        self.base = BaseController(PORT_LEFT_FOLLOWER) if enable_base else None
+        self.left_arm = (
+            ArmController(PORT_LEFT_FOLLOWER, "left_arm")
+            if enable_arms and PORT_LEFT_FOLLOWER else None
+        )
+        self.right_arm = (
+            ArmController(PORT_RIGHT_FOLLOWER, "right_arm")
+            if enable_arms and PORT_RIGHT_FOLLOWER else None
+        )
+        self.head = HeadController(PORT_RIGHT_FOLLOWER) if enable_head and PORT_RIGHT_FOLLOWER else None
+        self.base = BaseController(PORT_LEFT_FOLLOWER) if enable_base and PORT_LEFT_FOLLOWER else None
         self.cameras = CameraManager() if enable_cameras else None
         self._enable_head = enable_head
         self._enable_base = enable_base
+
+        if enable_arms and not PORT_RIGHT_FOLLOWER:
+            logger.warning("[robot] 右臂从臂未检测到，右臂控制已禁用")
+        if enable_head and not PORT_RIGHT_FOLLOWER:
+            logger.warning("[robot] 右臂从臂未检测到，云台控制已禁用")
+        if enable_base and not PORT_LEFT_FOLLOWER:
+            logger.warning("[robot] 左臂从臂未检测到，底盘控制已禁用")
 
     def connect(self) -> None:
         # ttyACM0: 左臂 + 底盘

@@ -146,6 +146,19 @@ class RobotSkillsWrapper:
                 from robot_skills import RobotSkills
                 self._robot = RobotSkills(**plan)
                 self._robot.connect()
+                available_parts = []
+                if self._robot.left_arm:
+                    available_parts.append("左臂")
+                if self._robot.right_arm:
+                    available_parts.append("右臂")
+                if self._robot.head:
+                    available_parts.append("云台")
+                if self._robot.base:
+                    available_parts.append("底盘")
+                if available_parts:
+                    status_parts.append("可控: " + "/".join(available_parts))
+                if not self._robot.right_arm:
+                    status_parts.append("右臂从臂未检测到")
                 status_parts.append(f"{label}: OK")
                 logger.info(f"连接成功: {label}")
                 break

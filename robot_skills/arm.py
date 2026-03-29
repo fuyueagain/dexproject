@@ -71,6 +71,8 @@ class ArmController:
         """连接臂。extra_motors 用于在同一 bus 上附加云台/底盘电机。"""
         if self.is_connected:
             return
+        if not self.port:
+            raise RuntimeError(f"[{self.name}] 未检测到对应串口，已跳过连接")
         from lerobot.motors import Motor, MotorNormMode
         motors = build_arm_motors()
         if extra_motors:
