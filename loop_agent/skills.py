@@ -343,7 +343,8 @@ class RobotSkillsWrapper:
         if not ctrl or not ctrl.is_connected:
             return None
         from robot_skills.kinematics import ArmIKController
-        ik = ArmIKController(ctrl)
+        # Agent 的核心需求是稳定完成末端位移，降低姿态权重能减少 5DOF 解算卡住。
+        ik = ArmIKController(ctrl, pos_weight=1.0, ori_weight=0.05)
         self._ik_controllers[arm] = ik
         return ik
 
@@ -434,12 +435,18 @@ class RobotSkillsWrapper:
         if ik is None:
             return {"success": False, "error": f"{arm} 臂未连接或 IK 不可用"}
 
-        if not ik.is_reachable(x, y, z):
-            return {"success": False,
-                    "error": f"目标位置 ({x:.4f},{y:.4f},{z:.4f}) 不可达"}
-
         try:
             before_pose = ik.get_cartesian_pose()
+            if not ik.is_reachable(
+                x, y, z,
+                roll=before_pose.roll,
+                pitch=before_pose.pitch,
+                yaw=before_pose.yaw,
+            ):
+                return {
+                    "success": False,
+                    "error": f"目标位置 ({x:.4f},{y:.4f},{z:.4f}) 在当前姿态约束下不可达",
+                }
             ik.move_cartesian(x=x, y=y, z=z, gripper=gripper, duration=duration)
             after_pose = ik.get_cartesian_pose()
 

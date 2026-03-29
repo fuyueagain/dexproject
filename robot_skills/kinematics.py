@@ -384,6 +384,8 @@ class ArmIKController:
 
     DEFAULT_DURATION = 2.0
     DEFAULT_HZ = 20.0
+    POSITION_THRESHOLD_M = 0.005
+    ORIENTATION_THRESHOLD_DEG = 5.0
 
     def __init__(self, arm_controller,
                  pos_weight: float = 1.0,
@@ -573,23 +575,153 @@ class ArmIKController:
         home = {n: 0.0 for n in ARM_MOTOR_NAMES}
         self.arm.move_smooth(home, duration=duration)
 
-    # ── 可达性 ──
-
-    def is_reachable(self, x: float, y: float, z: float,
-                     roll: float = 0, pitch: float = 0, yaw: float = 0,
-                     q_init: Optional[np.ndarray] = None,
-                     pos_threshold: float = 0.005) -> bool:
+    def _solve_target_pose(
+        self,
+        x: float, y: float, z: float,
+        roll: float, pitch: float, yaw: float,
+        q_init: Optional[np.ndarray] = None,
+        max_iter: int = 100,
+    ) -> dict:
+        """求解目标位姿，并返回误差，供可达性和调试接口复用。"""
         if q_init is None:
             try:
                 q_init = self._read_q()
             except Exception:
                 q_init = servo_deg_to_urdf([0, 0, 0, 0, 0])
 
-        T_w = pose6d_to_T(x, y, z, roll, pitch, yaw)
-        T_u = _T_work_to_urdf(T_w)
-        q_sol = self._solve_ik(T_u, q_init, max_iter=100)
-        err = np.linalg.norm(self.kin.get_ee_position(q_sol) - T_u[:3, 3])
-        return err < pos_threshold
+        T_work_target = pose6d_to_T(x, y, z, roll, pitch, yaw)
+        T_urdf_target = _T_work_to_urdf(T_work_target)
+        q_sol = self._solve_ik(T_urdf_target, q_init, max_iter=max_iter)
+
+        T_urdf_sol = self.kin.forward_kinematics(q_sol)
+        T_work_sol = _T_urdf_to_work(T_urdf_sol)
+
+        pos_err_m = float(np.linalg.norm(T_work_sol[:3, 3] - T_work_target[:3, 3]))
+        ori_err_deg = float(math.degrees(np.linalg.norm(
+            _rot_to_axis_angle(T_work_target[:3, :3] @ T_work_sol[:3, :3].T)
+        )))
+
+        return {
+            "q_sol": q_sol,
+            "target_work": T_work_target,
+            "solved_work": T_work_sol,
+            "pos_err_m": pos_err_m,
+            "ori_err_deg": ori_err_deg,
+        }
+
+    # ── 可达性 ──
+
+    def is_reachable(self, x: float, y: float, z: float,
+                     roll: float = 0, pitch: float = 0, yaw: float = 0,
+                     q_init: Optional[np.ndarray] = None,
+                     pos_threshold: float = POSITION_THRESHOLD_M,
+                     ori_threshold_deg: Optional[float] = None) -> bool:
+        solved = self._solve_target_pose(
+            x=x, y=y, z=z,
+            roll=roll, pitch=pitch, yaw=yaw,
+            q_init=q_init, max_iter=100,
+        )
+        if solved["pos_err_m"] >= pos_threshold:
+            return False
+        if ori_threshold_deg is not None and solved["ori_err_deg"] >= ori_threshold_deg:
+            return False
+        return True
+
+    def check_delta(self, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0,
+                    droll: float = 0.0, dpitch: float = 0.0, dyaw: float = 0.0,
+                    pose: Optional[CartesianPose] = None) -> dict:
+        """检查增量移动是否可行，兼容旧版调试接口。"""
+        if pose is None:
+            pose = self.get_cartesian_pose()
+
+        tx = pose.x + dx
+        ty = pose.y + dy
+        tz = pose.z + dz
+        tr = pose.roll + droll
+        tp = pose.pitch + dpitch
+        tyaw = pose.yaw + dyaw
+
+        solved = self._solve_target_pose(
+            x=tx, y=ty, z=tz,
+            roll=tr, pitch=tp, yaw=tyaw,
+            max_iter=100,
+        )
+        target_servo_deg = urdf_to_servo_deg(solved["q_sol"])
+        current_servo_deg = urdf_to_servo_deg(self._read_q())
+        max_change = float(np.max(np.abs(target_servo_deg - current_servo_deg)))
+
+        info = {
+            "reachable": False,
+            "target": (tx, ty, tz),
+            "target_rpy": (tr, tp, tyaw),
+            "target_joints_deg": dict(zip(IK_JOINT_NAMES, target_servo_deg)),
+            "max_joint_change_deg": max_change,
+            "reason": "",
+            "pos_err_mm": solved["pos_err_m"] * 1000.0,
+            "ori_err_deg": solved["ori_err_deg"],
+        }
+
+        if solved["pos_err_m"] >= self.POSITION_THRESHOLD_M:
+            info["reason"] = f"位置误差过大 ({solved['pos_err_m'] * 1000.0:.1f} mm)"
+            return info
+
+        if solved["ori_err_deg"] >= self.ORIENTATION_THRESHOLD_DEG:
+            info["reason"] = f"姿态误差过大 ({solved['ori_err_deg']:.1f}°)"
+            return info
+
+        info["reachable"] = True
+        info["reason"] = "可达"
+        if max_change > 45.0:
+            info["reason"] = f"可达, 但关节变化较大 ({max_change:.1f}°), 建议增大 duration"
+        return info
+
+    def get_feasible_range(self, step: float = 0.002, max_steps: int = 150,
+                           pose: Optional[CartesianPose] = None) -> dict:
+        """计算当前位姿下 xyz 三轴的可行增量范围，兼容旧版调试接口。"""
+        if pose is None:
+            pose = self.get_cartesian_pose()
+
+        axes = {
+            "dx": (1.0, 0.0, 0.0),
+            "dy": (0.0, 1.0, 0.0),
+            "dz": (0.0, 0.0, 1.0),
+        }
+        result = {"current": pose}
+
+        for axis_name, (ax, ay, az) in axes.items():
+            neg_limit = 0.0
+            pos_limit = 0.0
+            for sign in (-1.0, 1.0):
+                limit = 0.0
+                for i in range(1, max_steps + 1):
+                    delta = sign * i * step
+                    check = self.check_delta(
+                        dx=ax * delta,
+                        dy=ay * delta,
+                        dz=az * delta,
+                        pose=pose,
+                    )
+                    if check["reachable"]:
+                        limit = delta
+                    else:
+                        break
+                if sign < 0:
+                    neg_limit = limit
+                else:
+                    pos_limit = limit
+            result[axis_name] = (neg_limit, pos_limit)
+
+        dx_neg, dx_pos = result["dx"]
+        dy_neg, dy_pos = result["dy"]
+        dz_neg, dz_pos = result["dz"]
+        result["description"] = (
+            f"当前位姿: x={pose.x:.4f}, y={pose.y:.4f}, z={pose.z:.4f}\n"
+            f"可行增量范围 (米):\n"
+            f"  dx: [{dx_neg:+.3f}, {dx_pos:+.3f}]  ({(dx_pos - dx_neg) * 100:.1f} cm)\n"
+            f"  dy: [{dy_neg:+.3f}, {dy_pos:+.3f}]  ({(dy_pos - dy_neg) * 100:.1f} cm)\n"
+            f"  dz: [{dz_neg:+.3f}, {dz_pos:+.3f}]  ({(dz_pos - dz_neg) * 100:.1f} cm)"
+        )
+        return result
 
     def get_workspace_info(self) -> dict:
         l1 = math.sqrt(0.11257 ** 2 + 0.028 ** 2)

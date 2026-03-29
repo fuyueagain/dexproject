@@ -136,15 +136,18 @@ def test_hardware():
         print("\n[4] FK: 关节 → 笛卡尔坐标...")
         pose = ik_ctrl.get_cartesian_pose()
         print(f"  当前位姿: {pose}")
+        print(f"  运行时 IK 实现: {ik_ctrl.__class__.__module__}.{ik_ctrl.__class__.__name__}")
 
         ws = ik_ctrl.get_workspace_info()
         print(f"  {ws['description']}")
 
-        print("\n[5] 验证 IK ↔ FK 回环...")
+        print("\n[5] 验证平面 IK ↔ FK 回环 (肩俯仰 + 肘关节)...")
         plane_r = (pose.x ** 2 + pose.y ** 2) ** 0.5
-        sl_deg, ef_deg = ik_ctrl.kin.inverse_kinematics(plane_r, pose.z)
-        print(f"  IK(r={plane_r:.4f}, z={pose.z:.4f}) → lift={sl_deg:.1f}°, elbow={ef_deg:.1f}°")
-        print(f"  实际读取:                          lift={degrees['shoulder_lift']:.1f}°, elbow={degrees['elbow_flex']:.1f}°")
+        planar_kin = SO101Kinematics2D()
+        sl_deg, ef_deg = planar_kin.inverse_kinematics(plane_r, pose.z)
+        print(f"  2D IK(r={plane_r:.4f}, z={pose.z:.4f}) → lift={sl_deg:.1f}°, elbow={ef_deg:.1f}°")
+        print(f"  实际读取:                            lift={degrees['shoulder_lift']:.1f}°, elbow={degrees['elbow_flex']:.1f}°")
+        print(f"  误差: shoulder_lift={abs(sl_deg - degrees['shoulder_lift']):.1f}°, elbow={abs(ef_deg - degrees['elbow_flex']):.1f}°")
 
         print("\n[6] 可行增量范围分析...")
         feasible = ik_ctrl.get_feasible_range()
