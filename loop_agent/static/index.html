@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YuanClaw Loop Agent</title>
+<style>
+:root {
+  --bg-primary: #0a0b10;
+  --bg-secondary: #12131a;
+  --bg-card: #181924;
+  --bg-card-hover: #1e2030;
+  --border: #2a2c3e;
+  --border-glow: #3b3f5c;
+  --accent: #4f6ef7;
+  --accent-light: #6b85fa;
+  --accent-dim: #2d3a7a;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --text-primary: #e2e8f0;
+  --text-secondary: #8892a8;
+  --text-dim: #555b73;
+  --user-bubble: #2d3a7a;
+  --assistant-bubble: #1e2030;
+  --tool-bg: #1a1e2e;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 24px rgba(0,0,0,.4);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── 头部 ── */
+.header {
+  height: 52px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header-left h1 {
+  font-size: 18px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent-light), #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: .5px;
+}
+.status-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--error);
+  box-shadow: 0 0 6px var(--error);
+  transition: all .3s;
+}
+.status-dot.connected { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.status-text { font-size: 12px; color: var(--text-secondary); }
+.header-actions { display: flex; gap: 8px; }
+
+.btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn:hover { background: var(--bg-card-hover); border-color: var(--border-glow); }
+.btn-accent { background: var(--accent); border-color: var(--accent); }
+.btn-accent:hover { background: var(--accent-light); }
+.btn-danger { background: #7f1d1d; border-color: var(--error); }
+.btn-danger:hover { background: var(--error); }
+
+/* ── 主体布局 ── */
+.main {
+  display: flex;
+  height: calc(100vh - 52px);
+}
+
+/* ── 左面板: 聊天+状态 ── */
+.left-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+
+.chat-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-behavior: smooth;
+}
+
+.chat-area::-webkit-scrollbar { width: 6px; }
+.chat-area::-webkit-scrollbar-track { background: transparent; }
+.chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* 消息气泡 */
+.msg { max-width: 85%; animation: fadeIn .2s ease; }
+.msg-user { align-self: flex-end; }
+.msg-assistant { align-self: flex-start; }
+.msg-system { align-self: center; }
+
+.msg-bubble {
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.msg-user .msg-bubble {
+  background: var(--user-bubble);
+  border-bottom-right-radius: 4px;
+}
+.msg-assistant .msg-bubble {
+  background: var(--assistant-bubble);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+.msg-system .msg-bubble {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+.msg-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  padding: 0 4px;
+}
+.msg-user .msg-label { text-align: right; }
+
+/* 流式输出 */
+.streaming-text {
+  background: var(--assistant-bubble);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* 工具调用卡片 */
+.tool-card {
+  background: var(--tool-bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13px;
+  animation: fadeIn .2s ease;
+}
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: var(--accent-light);
+}
+.tool-card-header .icon { font-size: 14px; }
+.tool-card-body { color: var(--text-secondary); font-family: monospace; font-size: 12px; }
+.tool-card-result { margin-top: 6px; color: var(--success); font-size: 12px; }
+.tool-card-result.error { color: var(--error); }
+
+/* Agent 状态栏 */
+.agent-bar {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.agent-state-badge {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.state-idle { background: var(--bg-card); color: var(--text-dim); }
+.state-planning { background: #422006; color: var(--warning); }
+.state-executing { background: #052e16; color: var(--success); animation: pulse 2s infinite; }
+.state-chatting { background: var(--accent-dim); color: var(--accent-light); }
+.state-error { background: #450a0a; color: var(--error); }
+.state-completed { background: #052e16; color: var(--success); }
+
+.subtask-info { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 输入区 */
+.input-area {
+  padding: 12px 20px 16px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.input-row textarea {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  min-height: 42px;
+  max-height: 120px;
+  transition: border-color .15s;
+  line-height: 1.5;
+}
+.input-row textarea:focus { border-color: var(--accent); }
+.input-row textarea::placeholder { color: var(--text-dim); }
+
+.send-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  border: none;
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s;
+  flex-shrink: 0;
+}
+.send-btn:hover { background: var(--accent-light); }
+.send-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── 右面板: 相机+状态 ── */
+.right-panel {
+  width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  overflow-y: auto;
+}
+
+.camera-section {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.camera-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.camera-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.camera-card img {
+  width: 100%;
+  height: auto;
+  display: block;
+  min-height: 180px;
+  background: var(--bg-primary);
+  object-fit: contain;
+}
+
+/* 关节状态 */
+.joints-section {
+  padding: 0 12px 12px;
+}
+.joints-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.joints-card-header {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.joints-body {
+  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+}
+.joint-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  padding: 3px 0;
+  border-bottom: 1px solid #1a1c2a;
+}
+.joint-name { color: var(--text-secondary); }
+.joint-value { color: var(--text-primary); font-family: monospace; font-weight: 600; }
+
+/* 子任务面板 */
+.subtasks-section { padding: 0 12px 12px; }
+.subtasks-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.subtasks-card-header {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.subtask-list { padding: 6px 12px; }
+.subtask-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12px;
+  border-bottom: 1px solid #1a1c2a;
+}
+.subtask-item:last-child { border-bottom: none; }
+.subtask-idx {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; flex-shrink: 0;
+}
+.subtask-idx.active { background: var(--accent); border-color: var(--accent); color: white; }
+.subtask-idx.done { background: var(--success); border-color: var(--success); color: white; }
+.subtask-desc { flex: 1; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtask-desc.active { color: var(--text-primary); }
+.subtask-steps { color: var(--text-dim); font-size: 10px; }
+
+/* 观测卡片 */
+.observation-card {
+  background: var(--tool-bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--success);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  animation: fadeIn .2s ease;
+}
+.observation-card-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--success);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.observation-images {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.obs-img-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.obs-img-wrap img {
+  border-radius: 4px;
+  height: 90px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: transform .15s, border-color .15s;
+  display: block;
+}
+.obs-img-wrap img:hover {
+  transform: scale(1.04);
+  border-color: var(--accent);
+}
+.obs-img-label {
+  font-size: 9px;
+  color: var(--text-dim);
+  text-align: center;
+  margin-top: 2px;
+}
+.comparison-section {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+.comparison-header {
+  font-size: 10px;
+  color: var(--warning);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.comparison-section .obs-img-wrap img {
+  height: 80px;
+}
+
+/* 图片灯箱 */
+.img-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.88);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+  animation: fadeIn .15s ease;
+}
+.img-lightbox img {
+  max-width: 95vw;
+  max-height: 95vh;
+  border-radius: 8px;
+  box-shadow: 0 0 60px rgba(0,0,0,.6);
+}
+
+/* ── 动画 ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .7; }
+}
+
+/* ── 响应式 ── */
+@media (max-width: 900px) {
+  .main { flex-direction: column; }
+  .right-panel { width: 100%; height: 40vh; flex-direction: row; flex-wrap: wrap; overflow-x: auto; }
+  .camera-section { flex-direction: row; }
+  .camera-card { min-width: 280px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>YuanClaw</h1>
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-text" id="statusText">未连接</span>
+  </div>
+  <div class="header-actions">
+    <button class="btn" id="btnConnect" onclick="toggleRobot()">连接机器人</button>
+    <button class="btn btn-danger" id="btnStop" onclick="emergencyStop()" style="display:none;">紧急停止</button>
+  </div>
+</div>
+
+<div class="main">
+  <!-- 左面板: Chat -->
+  <div class="left-panel">
+    <div class="chat-area" id="chatArea"></div>
+
+    <div class="agent-bar" id="agentBar">
+      <span class="agent-state-badge state-idle" id="agentBadge">IDLE</span>
+      <span class="subtask-info" id="subtaskInfo">等待指令...</span>
+      <span id="stepCounter"></span>
+    </div>
+
+    <div class="input-area">
+      <div class="input-row">
+        <textarea id="chatInput" rows="1" placeholder="输入指令或聊天... (Enter 发送, Shift+Enter 换行)"
+                  onkeydown="handleInputKey(event)"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右面板: Camera + Status -->
+  <div class="right-panel">
+    <div class="camera-section">
+      <div class="camera-card">
+        <div class="camera-card-header">
+          <span>CAM A — 左腕相机</span>
+          <span style="font-size:10px;color:var(--text-dim)">video0</span>
+        </div>
+        <img id="camA" src="/api/stream/cam_a" alt="Camera A" onerror="this.style.background='#1a1a2a'">
+      </div>
+      <div class="camera-card">
+        <div class="camera-card-header">
+          <span>CAM B — 头部相机 (云台)</span>
+          <span style="font-size:10px;color:var(--text-dim)">video2</span>
+        </div>
+        <img id="camB" src="/api/stream/cam_b" alt="Camera B" onerror="this.style.background='#1a1a2a'">
+      </div>
+    </div>
+
+    <div class="subtasks-section" id="subtasksSection" style="display:none;">
+      <div class="subtasks-card">
+        <div class="subtasks-card-header">任务进度</div>
+        <div class="subtask-list" id="subtaskList"></div>
+      </div>
+    </div>
+
+    <div class="joints-section">
+      <div class="joints-card">
+        <div class="joints-card-header">
+          <span>关节状态</span>
+          <span style="font-size:10px;color:var(--text-dim)" id="jointUpdateTime">--</span>
+        </div>
+        <div class="joints-body" id="jointsBody">
+          <div style="grid-column:1/-1;padding:12px 0;text-align:center;color:var(--text-dim);font-size:12px;">
+            等待机器人连接...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const WS_URL = `ws://${location.host}/ws`;
+let ws = null;
+let robotConnected = false;
+let streamingEl = null;
+
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    addSystemMsg('已连接到服务器');
+  };
+
+  ws.onclose = () => {
+    addSystemMsg('与服务器断开，3秒后重连...');
+    setTimeout(connectWS, 3000);
+  };
+
+  ws.onerror = () => {};
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      handleMessage(msg);
+    } catch {}
+  };
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'welcome':
+      robotConnected = msg.robot_connected;
+      updateRobotUI();
+      updateAgentStatus(msg.agent_status);
+      break;
+
+    case 'chat':
+      finalizeStreaming();
+      if (msg.role === 'user') {
+        addUserMsg(msg.content);
+      } else {
+        addAssistantMsg(msg.content);
+      }
+      break;
+
+    case 'stream_delta':
+      appendStreaming(msg.content);
+      break;
+
+    case 'agent_thought':
+      finalizeStreaming();
+      addThoughtMsg(msg.content, msg.step);
+      break;
+
+    case 'tool_start':
+      finalizeStreaming();
+      addToolCard(msg.call_id, msg.name, null, null);
+      break;
+
+    case 'tool_ready':
+      updateToolArgs(msg.call_id, msg.arguments);
+      break;
+
+    case 'tool_result':
+      updateToolResult(msg.call_id, msg.name, msg.arguments, msg.result);
+      break;
+
+    case 'agent_status':
+      updateAgentStatus(msg);
+      break;
+
+    case 'robot_status':
+      robotConnected = msg.connected;
+      updateRobotUI();
+      if (msg.message) addSystemMsg(msg.message);
+      if (msg.connected) reloadCameraStreams();
+      break;
+
+    case 'joint_update':
+      updateJoints(msg.positions);
+      break;
+
+    case 'subtask_start':
+      addSystemMsg(`开始子任务 ${msg.index + 1}: ${msg.description}`);
+      break;
+
+    case 'observation':
+      addObservationCard(msg);
+      break;
+
+    case 'step_start':
+      break;
+
+    case 'error':
+      addErrorMsg(msg.message);
+      break;
+  }
+}
+
+// ── 消息渲染 ──
+const chatArea = document.getElementById('chatArea');
+
+function scrollToBottom() {
+  requestAnimationFrame(() => {
+    chatArea.scrollTop = chatArea.scrollHeight;
+  });
+}
+
+function addUserMsg(text) {
+  const div = document.createElement('div');
+  div.className = 'msg msg-user';
+  div.innerHTML = `<div class="msg-label">USER</div><div class="msg-bubble">${escapeHtml(text)}</div>`;
+  chatArea.appendChild(div);
+  scrollToBottom();
+}
+
+function addAssistantMsg(text) {
+  const div = document.createElement('div');
+  div.className = 'msg msg-assistant';
+  div.innerHTML = `<div class="msg-label">ASSISTANT</div><div class="msg-bubble">${formatText(text)}</div>`;
+  chatArea.appendChild(div);
+  scrollToBottom();
+}
+
+function addThoughtMsg(text, step) {
+  const div = document.createElement('div');
+  div.className = 'msg msg-assistant';
+  const label = step ? `STEP ${step} — 思考` : '思考';
+  div.innerHTML = `<div class="msg-label">${label}</div><div class="msg-bubble" style="border-color:var(--accent-dim);opacity:.85;font-size:13px;">${formatText(text)}</div>`;
+  chatArea.appendChild(div);
+  scrollToBottom();
+}
+
+function addSystemMsg(text) {
+  const div = document.createElement('div');
+  div.className = 'msg msg-system';
+  div.innerHTML = `<div class="msg-bubble">${escapeHtml(text)}</div>`;
+  chatArea.appendChild(div);
+  scrollToBottom();
+}
+
+function addErrorMsg(text) {
+  const div = document.createElement('div');
+  div.className = 'msg msg-system';
+  div.innerHTML = `<div class="msg-bubble" style="border-color:var(--error);color:var(--error);">ERROR: ${escapeHtml(text)}</div>`;
+  chatArea.appendChild(div);
+  scrollToBottom();
+}
+
+function appendStreaming(delta) {
+  if (!streamingEl) {
+    streamingEl = document.createElement('div');
+    streamingEl.className = 'msg msg-assistant';
+    streamingEl.innerHTML = `<div class="msg-label">ASSISTANT</div><div class="streaming-text"></div>`;
+    chatArea.appendChild(streamingEl);
+  }
+  const textEl = streamingEl.querySelector('.streaming-text');
+  textEl.textContent += delta;
+  scrollToBottom();
+}
+
+function finalizeStreaming() {
+  if (streamingEl) {
+    const textEl = streamingEl.querySelector('.streaming-text');
+    if (textEl && textEl.textContent.trim()) {
+      textEl.className = 'msg-bubble';
+      textEl.style.borderColor = 'var(--border)';
+      textEl.style.animation = 'none';
+    } else {
+      streamingEl.remove();
+    }
+    streamingEl = null;
+  }
+}
+
+// ── 工具卡片 ──
+const toolCards = {};
+
+function addToolCard(callId, name, args, result) {
+  const div = document.createElement('div');
+  div.className = 'tool-card';
+  div.id = `tool-${callId}`;
+  div.innerHTML = `
+    <div class="tool-card-header">
+      <span class="icon">⚡</span>
+      <span>${escapeHtml(name)}</span>
+      <span style="font-size:10px;color:var(--text-dim);margin-left:auto;">执行中...</span>
+    </div>
+    <div class="tool-card-body" id="tool-args-${callId}">...</div>
+    <div class="tool-card-result" id="tool-result-${callId}"></div>
+  `;
+  chatArea.appendChild(div);
+  toolCards[callId] = div;
+  scrollToBottom();
+}
+
+function updateToolArgs(callId, argsStr) {
+  const el = document.getElementById(`tool-args-${callId}`);
+  if (el) {
+    try {
+      const args = JSON.parse(argsStr);
+      el.textContent = JSON.stringify(args, null, 2);
+    } catch {
+      el.textContent = argsStr;
+    }
+  }
+}
+
+function updateToolResult(callId, name, args, result) {
+  let card = toolCards[callId];
+  if (!card) {
+    addToolCard(callId, name, args, result);
+    card = toolCards[callId];
+  }
+
+  const argsEl = document.getElementById(`tool-args-${callId}`);
+  if (argsEl && args) {
+    argsEl.textContent = JSON.stringify(args, null, 2);
+  }
+
+  const resultEl = document.getElementById(`tool-result-${callId}`);
+  if (resultEl) {
+    const ok = result && result.success !== false;
+    resultEl.className = 'tool-card-result' + (ok ? '' : ' error');
+    resultEl.textContent = ok ? '✓ ' + JSON.stringify(result) : '✗ ' + JSON.stringify(result);
+  }
+
+  const header = card?.querySelector('.tool-card-header span:last-child');
+  if (header) header.textContent = '完成';
+
+  scrollToBottom();
+}
+
+// ── Agent 状态 ──
+function updateAgentStatus(status) {
+  if (!status) return;
+  const badge = document.getElementById('agentBadge');
+  const info = document.getElementById('subtaskInfo');
+  const counter = document.getElementById('stepCounter');
+  const stopBtn = document.getElementById('btnStop');
+
+  const state = status.state;
+  badge.textContent = state.toUpperCase();
+  badge.className = 'agent-state-badge state-' + state;
+
+  const isActive = ['planning', 'executing', 'chatting'].includes(state);
+  stopBtn.style.display = isActive ? '' : 'none';
+
+  if (status.subtasks && status.subtasks.length > 0) {
+    const current = status.subtasks[status.current_subtask_idx || 0];
+    if (current) {
+      info.textContent = `[${(status.current_subtask_idx || 0) + 1}/${status.subtasks.length}] ${current.description}`;
+    }
+    counter.textContent = `步骤: ${status.total_steps || 0}`;
+    renderSubtasks(status.subtasks, status.current_subtask_idx || 0);
+  } else {
+    info.textContent = status.last_action || '等待指令...';
+    counter.textContent = '';
+  }
+}
+
+function renderSubtasks(subtasks, currentIdx) {
+  const section = document.getElementById('subtasksSection');
+  const list = document.getElementById('subtaskList');
+  if (!subtasks || subtasks.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  list.innerHTML = subtasks.map((st, i) => {
+    const isActive = i === currentIdx && !st.completed;
+    const isDone = st.completed;
+    return `
+      <div class="subtask-item">
+        <div class="subtask-idx ${isDone ? 'done' : isActive ? 'active' : ''}">${isDone ? '✓' : i + 1}</div>
+        <div class="subtask-desc ${isActive ? 'active' : ''}">${escapeHtml(st.description)}</div>
+        <div class="subtask-steps">${st.steps > 0 ? st.steps + '步' : ''}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── 关节状态 ──
+function updateJoints(positions) {
+  const body = document.getElementById('jointsBody');
+  const time = document.getElementById('jointUpdateTime');
+  if (!positions) return;
+
+  let html = '';
+  for (const [part, joints] of Object.entries(positions)) {
+    if (!joints || Object.keys(joints).length === 0) continue;
+    html += `<div style="grid-column:1/-1;font-size:11px;font-weight:600;color:var(--accent-light);padding:4px 0 2px;border-top:1px solid var(--border);margin-top:2px;">${part}</div>`;
+    for (const [name, val] of Object.entries(joints)) {
+      const v = typeof val === 'number' ? val.toFixed(1) : val;
+      html += `<div class="joint-item"><span class="joint-name">${name}</span><span class="joint-value">${v}</span></div>`;
+    }
+  }
+  if (html) {
+    body.innerHTML = html;
+    time.textContent = new Date().toLocaleTimeString();
+  }
+}
+
+// ── Robot 连接 ──
+function updateRobotUI() {
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  const btn = document.getElementById('btnConnect');
+  if (robotConnected) {
+    dot.classList.add('connected');
+    text.textContent = '已连接';
+    btn.textContent = '断开机器人';
+  } else {
+    dot.classList.remove('connected');
+    text.textContent = '未连接';
+    btn.textContent = '连接机器人';
+  }
+}
+
+function toggleRobot() {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type: robotConnected ? 'disconnect_robot' : 'connect_robot' }));
+}
+
+function reloadCameraStreams() {
+  const ts = Date.now();
+  document.getElementById('camA').src = `/api/stream/cam_a?t=${ts}`;
+  document.getElementById('camB').src = `/api/stream/cam_b?t=${ts}`;
+}
+
+function emergencyStop() {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type: 'emergency_stop' }));
+}
+
+// ── 发送消息 ──
+function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text || !ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type: 'chat', content: text }));
+  input.value = '';
+  input.style.height = 'auto';
+}
+
+function handleInputKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+  requestAnimationFrame(() => {
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+  });
+}
+
+// ── 观测卡片 ──
+function addObservationCard(msg) {
+  const div = document.createElement('div');
+  div.className = 'observation-card';
+
+  let imgsHtml = '';
+  if (msg.images && msg.images.length) {
+    imgsHtml = msg.images.map(img =>
+      `<div class="obs-img-wrap">
+        <img src="data:image/jpeg;base64,${img.base64}"
+             title="${img.label}" loading="lazy"
+             onclick="openLightbox(this.src)">
+        <div class="obs-img-label">${escapeHtml(img.label)}</div>
+      </div>`
+    ).join('');
+  }
+
+  let compHtml = '';
+  if (msg.comparisons && msg.comparisons.length) {
+    const compImgs = msg.comparisons.map(c =>
+      `<div class="obs-img-wrap">
+        <img src="data:image/jpeg;base64,${c.base64}"
+             title="${c.label}" loading="lazy"
+             onclick="openLightbox(this.src)">
+        <div class="obs-img-label">${escapeHtml(c.label)}</div>
+      </div>`
+    ).join('');
+    compHtml = `<div class="comparison-section">
+      <div class="comparison-header">&#x27F7; 动作前后对比</div>
+      <div class="observation-images">${compImgs}</div>
+    </div>`;
+  }
+
+  div.innerHTML = `
+    <div class="observation-card-header">
+      <span>&#x1F4F7;</span>
+      <span>STEP ${msg.step} 观测</span>
+    </div>
+    <div class="observation-images">${imgsHtml}</div>
+    ${compHtml}
+  `;
+
+  chatArea.appendChild(div);
+  scrollToBottom();
+}
+
+function openLightbox(src) {
+  const overlay = document.createElement('div');
+  overlay.className = 'img-lightbox';
+  const img = document.createElement('img');
+  img.src = src;
+  overlay.appendChild(img);
+  overlay.onclick = () => overlay.remove();
+  document.addEventListener('keydown', function handler(e) {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', handler); }
+  });
+  document.body.appendChild(overlay);
+}
+
+// ── 工具函数 ──
+function escapeHtml(text) {
+  const el = document.createElement('div');
+  el.textContent = text;
+  return el.innerHTML;
+}
+
+function formatText(text) {
+  let html = escapeHtml(text);
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/`([^`]+)`/g, '<code style="background:var(--bg-primary);padding:1px 4px;border-radius:3px;font-size:12px;">$1</code>');
+  html = html.replace(/^## (.*?)$/gm, '<div style="font-size:15px;font-weight:700;margin:8px 0 4px;color:var(--accent-light);">$1</div>');
+  html = html.replace(/^### (.*?)$/gm, '<div style="font-size:14px;font-weight:600;margin:6px 0 2px;">$1</div>');
+  html = html.replace(/^\d+\.\s/gm, (m) => `<span style="color:var(--accent);">${m}</span>`);
+  return html;
+}
+
+// ── 启动 ──
+connectWS();
+</script>
+</body>
+</html>

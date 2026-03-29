@@ -1,0 +1,176 @@
+{
+  "ttyACM0_id1": {
+    "port": "/dev/ttyACM0",
+    "id": 1,
+    "raw_pos": 3219,
+    "name": "左臂第一个关节，左右旋转"
+  },
+  "ttyACM0_id2": {
+    "port": "/dev/ttyACM0",
+    "id": 2,
+    "raw_pos": 3626,
+    "name": "左臂第二个关节,上下俯仰"
+  },
+  "ttyACM0_id3": {
+    "port": "/dev/ttyACM0",
+    "id": 3,
+    "raw_pos": 708,
+    "name": "左臂第三个关节,上下俯仰"
+  },
+  "ttyACM0_id4": {
+    "port": "/dev/ttyACM0",
+    "id": 4,
+    "raw_pos": 1563,
+    "name": "左臂第四个关节上下俯仰"
+  },
+  "ttyACM0_id5": {
+    "port": "/dev/ttyACM0",
+    "id": 5,
+    "raw_pos": 2177,
+    "name": "左臂第五个关节,左右旋转"
+  },
+  "ttyACM0_id6": {
+    "port": "/dev/ttyACM0",
+    "id": 6,
+    "raw_pos": 3495,
+    "name": "左臂的夹爪控制"
+  },
+  "ttyACM0_id7": {
+    "port": "/dev/ttyACM0",
+    "id": 7,
+    "raw_pos": 1928,
+    "name": "底座的左右移动，第一个舵机，底座一共三个呈三角形的舵机，共同控制前后左右。"
+  },
+  "ttyACM0_id8": {
+    "port": "/dev/ttyACM0",
+    "id": 8,
+    "raw_pos": 3098,
+    "name": "底座的第二个舵机,有点控制前后，底座一共三个呈三角形的舵机，共同控制前后左右。"
+  },
+  "ttyACM0_id9": {
+    "port": "/dev/ttyACM0",
+    "id": 9,
+    "raw_pos": 1594,
+    "name": "底座的第三个舵机,也是控制前后,但带有转动"
+  },
+  "ttyACM1_id1": {
+    "port": "/dev/ttyACM1",
+    "id": 1,
+    "raw_pos": 208,
+    "name": "右臂的第一个关节,左右旋转"
+  },
+  "ttyACM1_id2": {
+    "port": "/dev/ttyACM1",
+    "id": 2,
+    "raw_pos": 3366,
+    "name": "右臂的第二个关节,上下俯仰"
+  },
+  "ttyACM1_id3": {
+    "port": "/dev/ttyACM1",
+    "id": 3,
+    "raw_pos": 2049,
+    "name": "右臂的第三个关节,上下俯仰"
+  },
+  "ttyACM1_id4": {
+    "port": "/dev/ttyACM1",
+    "id": 4,
+    "raw_pos": 1423,
+    "name": "右臂第四个关节,上下俯仰"
+  },
+  "ttyACM1_id5": {
+    "port": "/dev/ttyACM1",
+    "id": 5,
+    "raw_pos": 3380,
+    "name": "右臂的第五个关节,左右旋转"
+  },
+  "ttyACM1_id6": {
+    "port": "/dev/ttyACM1",
+    "id": 6,
+    "raw_pos": 3685,
+    "name": "右臂的六个关节,夹爪开合"
+  },
+  "ttyACM1_id7": {
+    "port": "/dev/ttyACM1",
+    "id": 7,
+    "raw_pos": 1628,
+    "name": "相机云台的左右旋转"
+  },
+  "ttyACM1_id8": {
+    "port": "/dev/ttyACM1",
+    "id": 8,
+    "raw_pos": 2721,
+    "name": "相机云台的上下俯仰"
+  },
+  "ttyACM2_id1": {
+    "port": "/dev/ttyACM2",
+    "id": 1,
+    "raw_pos": 200,
+    "name": "遥操的舵机第一个关节"
+  },
+  "ttyACM2_id2": {
+    "port": "/dev/ttyACM2",
+    "id": 2,
+    "raw_pos": 3305,
+    "name": "遥操左臂第二个俯仰关节"
+  },
+  "ttyACM2_id3": {
+    "port": "/dev/ttyACM2",
+    "id": 3,
+    "raw_pos": 775,
+    "name": "遥操左臂的第三个俯仰关节"
+  },
+  "ttyACM2_id4": {
+    "port": "/dev/ttyACM2",
+    "id": 4,
+    "raw_pos": 1042,
+    "name": "遥操左臂的第四个俯仰关节"
+  },
+  "ttyACM2_id5": {
+    "port": "/dev/ttyACM2",
+    "id": 5,
+    "raw_pos": 3912,
+    "name": "遥操左臂的第五个旋转关节"
+  },
+  "ttyACM2_id6": {
+    "port": "/dev/ttyACM2",
+    "id": 6,
+    "raw_pos": 1943,
+    "name": "遥操左臂第六个控制夹爪的关节"
+  },
+  "ttyACM3_id1": {
+    "port": "/dev/ttyACM3",
+    "id": 1,
+    "raw_pos": 3130,
+    "name": "遥操右臂左右旋转,第一个关节"
+  },
+  "ttyACM3_id2": {
+    "port": "/dev/ttyACM3",
+    "id": 2,
+    "raw_pos": 3980,
+    "name": "遥操右臂第二个关节,俯仰"
+  },
+  "ttyACM3_id3": {
+    "port": "/dev/ttyACM3",
+    "id": 3,
+    "raw_pos": 546,
+    "name": "遥操右臂第三个关节,俯仰"
+  },
+  "ttyACM3_id4": {
+    "port": "/dev/ttyACM3",
+    "id": 4,
+    "raw_pos": 878,
+    "name": "遥操右臂第四个关节,俯仰"
+  },
+  "ttyACM3_id5": {
+    "port": "/dev/ttyACM3",
+    "id": 5,
+    "raw_pos": 3190,
+    "name": "遥操右臂第五个关节,左右旋转"
+  },
+  "ttyACM3_id6": {
+    "port": "/dev/ttyACM3",
+    "id": 6,
+    "raw_pos": 4087,
+    "name": "遥操第六个关节,右臂,夹爪开合"
+  }
+}
