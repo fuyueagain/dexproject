@@ -32,6 +32,9 @@ class SubTask:
     description: str
     completed: bool = False
     steps_taken: int = 0
+    requires_arm_action: bool = False
+    required_arm: Optional[str] = None
+    arm_action_completed: bool = False
 
 
 @dataclass
@@ -191,6 +194,8 @@ class LoopAgent:
         plan_prompt = (
             f"请将以下机器人任务拆解为有序的子任务列表。\n\n"
             f"任务: {task}\n\n"
+            "如果任务涉及左臂/右臂/夹爪/抓取/放置/搬运，子任务中必须包含实际的机械臂或夹爪动作。\n"
+            "不要把任务拆成只有头部扫描/观察的子任务序列；云台扫描只能作为辅助观察，不能替代机械臂操作。\n\n"
             f"请严格按以下 JSON 格式返回（只返回 JSON，不要其他内容）:\n"
             f'{{"subtasks": ["子任务1描述", "子任务2描述", ...]}}'
         )
@@ -219,7 +224,31 @@ class LoopAgent:
             await self._emit({"type": "chat", "role": "assistant",
                               "content": "无法解析子任务列表，将任务作为单个子任务执行。"})
 
-        subtasks = [SubTask(index=i, description=d) for i, d in enumerate(subtask_descs)]
+        subtasks = []
+        for i, desc in enumerate(subtask_descs):
+            requires_arm_action, required_arm = self._infer_subtask_arm_requirement(task, desc)
+            subtasks.append(SubTask(
+                index=i,
+                description=desc,
+                requires_arm_action=requires_arm_action,
+                required_arm=required_arm,
+            ))
+
+        if self._task_requires_arm_manipulation(task) and not any(
+            st.requires_arm_action for st in subtasks
+        ):
+            fallback_arm = self._infer_arm_from_text(task)
+            subtasks = [SubTask(
+                index=0,
+                description=task,
+                requires_arm_action=True,
+                required_arm=fallback_arm,
+            )]
+            await self._emit({
+                "type": "chat",
+                "role": "assistant",
+                "content": "规划结果没有包含实际机械臂动作，已回退为直接按原任务执行，避免只做云台扫描。",
+            })
 
         plan_text = "## 任务规划\n" + "\n".join(
             f"{i+1}. {st.description}" for i, st in enumerate(subtasks)
@@ -377,6 +406,120 @@ class LoopAgent:
 
         return "## 直接动作映射提示\n" + "\n".join(directions)
 
+    @staticmethod
+    def _infer_arm_from_text(text: str) -> Optional[str]:
+        has_left = "左臂" in text
+        has_right = "右臂" in text
+        if has_left and not has_right:
+            return "left"
+        if has_right and not has_left:
+            return "right"
+        return None
+
+    @classmethod
+    def _task_requires_arm_manipulation(cls, task: str) -> bool:
+        arm_terms = ("左臂", "右臂", "夹爪", "机械臂", "gripper", "arm")
+        manipulation_terms = (
+            "抓", "取", "拿", "放", "搬", "递", "抬", "举", "伸", "缩",
+            "夹", "松开", "闭合", "张开", "对准", "靠近", "移动",
+        )
+        return (
+            any(term in task for term in arm_terms)
+            and any(term in task for term in manipulation_terms)
+        )
+
+    @classmethod
+    def _infer_subtask_arm_requirement(cls, task: str, subtask: str) -> tuple[bool, Optional[str]]:
+        subtext = subtask.strip()
+        tasktext = task.strip()
+        required_arm = cls._infer_arm_from_text(subtext) or cls._infer_arm_from_text(tasktext)
+
+        arm_terms = ("左臂", "右臂", "夹爪", "机械臂", "gripper", "arm")
+        manipulation_terms = (
+            "抓", "取", "拿", "放", "搬", "递", "抬", "举", "伸", "缩",
+            "夹", "松开", "闭合", "张开", "对准", "靠近", "移动",
+        )
+        head_scan_terms = (
+            "云台", "头部", "相机", "cam_a", "cam_b", "扫描",
+            "观察", "查看", "寻找", "定位", "搜索",
+        )
+
+        sub_mentions_arm = any(term in subtext for term in arm_terms)
+        sub_mentions_manipulation = any(term in subtext for term in manipulation_terms)
+        sub_is_head_only = (
+            any(term in subtext for term in head_scan_terms)
+            and not sub_mentions_arm
+        )
+
+        if sub_is_head_only:
+            return False, required_arm
+
+        if sub_mentions_arm and sub_mentions_manipulation:
+            return True, required_arm
+
+        if sub_mentions_manipulation and cls._task_requires_arm_manipulation(tasktext):
+            return True, required_arm
+
+        return False, required_arm
+
+    @staticmethod
+    def _tool_counts_as_arm_action(subtask: SubTask, fc: FunctionCall, result: dict) -> bool:
+        if not result.get("success"):
+            return False
+        if fc.name not in (
+            "move_arm",
+            "move_arm_cartesian_delta",
+            "move_arm_cartesian",
+            "set_gripper",
+        ):
+            return False
+
+        args = fc.parsed_arguments()
+        arm = args.get("arm")
+        if subtask.required_arm and arm and arm != subtask.required_arm:
+            return False
+
+        if fc.name == "move_arm":
+            moved = result.get("moved", {})
+            return any(abs(v) >= 0.5 for v in moved.values())
+
+        if fc.name == "move_arm_cartesian_delta":
+            actual = result.get("actual_delta", {})
+            return any(abs(v) >= 0.003 for v in actual.values())
+
+        if fc.name == "move_arm_cartesian":
+            before = result.get("before", {})
+            after = result.get("after", {})
+            if not before or not after:
+                return False
+            deltas = [abs(after[k] - before[k]) for k in ("x", "y", "z")]
+            return any(delta >= 0.003 for delta in deltas)
+
+        return True
+
+    async def _validate_finish_request(self, subtask: SubTask, fc: FunctionCall) -> Optional[dict]:
+        if fc.name not in ("finish_subtask", "finish_task"):
+            return None
+
+        if not subtask.requires_arm_action or subtask.arm_action_completed:
+            return None
+
+        arm_label = {
+            "left": "左臂",
+            "right": "右臂",
+            None: "机械臂/夹爪",
+        }[subtask.required_arm]
+        message = (
+            f"当前子任务要求实际执行{arm_label}动作。"
+            "仅移动头部云台或观察画面不能判定完成，请先成功调用对应手臂或夹爪工具。"
+        )
+        await self._emit({
+            "type": "chat",
+            "role": "assistant",
+            "content": message,
+        })
+        return {"success": False, "error": message}
+
     async def _execute_subtask(self, subtask: SubTask):
         """执行单个子任务的感知-决策-行动循环"""
         while (not subtask.completed
@@ -442,6 +585,20 @@ class LoopAgent:
             )
             if direct_hint:
                 context_parts.append(direct_hint)
+
+            if subtask.requires_arm_action:
+                arm_label = {
+                    "left": "左臂",
+                    "right": "右臂",
+                    None: "机械臂/夹爪",
+                }[subtask.required_arm]
+                context_parts.append(
+                    "## 子任务完成约束\n"
+                    f"当前子任务必须包含实际的{arm_label}动作。"
+                    "仅移动头部云台、扫描画面或观察目标，不能判定此子任务完成。"
+                    "在调用 finish_subtask 之前，必须至少成功执行一次对应手臂的 "
+                    "move_arm / move_arm_cartesian_delta / move_arm_cartesian / set_gripper。"
+                )
 
             context_parts.append(
                 "## 指令\n"
@@ -525,8 +682,15 @@ class LoopAgent:
             # 行动：执行工具调用
             tool_summaries = []
             for call_id, fc in pending_calls_dict.items():
-                result = await self._execute_tool(fc)
+                finish_block = await self._validate_finish_request(subtask, fc)
+                if finish_block is not None:
+                    result = finish_block
+                else:
+                    result = await self._execute_tool(fc)
                 result_str = json.dumps(result, ensure_ascii=False)
+
+                if self._tool_counts_as_arm_action(subtask, fc, result):
+                    subtask.arm_action_completed = True
 
                 self.status.last_action = f"{fc.name}({fc.arguments}) → {result_str[:100]}"
                 await self._emit({
@@ -541,12 +705,16 @@ class LoopAgent:
                 )
 
                 if fc.name == "finish_subtask":
-                    subtask.completed = True
-                    break
+                    if result.get("success"):
+                        subtask.completed = True
+                        break
+                    continue
                 if fc.name == "finish_task":
-                    subtask.completed = True
-                    self._running = False
-                    break
+                    if result.get("success"):
+                        subtask.completed = True
+                        self._running = False
+                        break
+                    continue
 
             # 对话历史只存文本摘要(不存图片), 避免膨胀
             if tool_summaries or thought_text:

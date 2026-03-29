@@ -114,6 +114,8 @@ SYSTEM_PROMPT = f"""你是 YuanClaw Loop Agent，一个控制 XLeRobot 双臂机
 - 请主动描述你在画面中看到的内容，以及你的推理过程
 - 每次只执行一个动作，然后等待下一次观察
 - 如果不确定方向，先做一个很小的试探动作（delta=1），观察效果后再决定
+- 对于涉及“左臂/右臂/夹爪/抓取/放置/搬运”的子任务，不能只通过 move_head 完成
+- 只有在对应机械臂或夹爪已经实际执行成功后，才能调用 finish_subtask
 """
 
 TOOL_DEFINITIONS = [
@@ -290,7 +292,7 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "name": "finish_subtask",
-        "description": "标记当前子任务为已完成，切换到下一个子任务。",
+        "description": "标记当前子任务为已完成，切换到下一个子任务。只有当当前子任务的目标已经真正达成时才能调用；如果子任务涉及机械臂/夹爪操作，不能仅靠头部扫描后调用。",
         "parameters": {
             "type": "object",
             "properties": {
